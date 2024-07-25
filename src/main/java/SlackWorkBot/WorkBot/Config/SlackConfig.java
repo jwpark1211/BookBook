@@ -6,7 +6,6 @@ import com.slack.api.bolt.App;
 import com.slack.api.bolt.AppConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -19,6 +18,7 @@ public class SlackConfig {
     private String token;
     @Value("${slack.signingSecret}")
     private String signingSecret;
+
     private final AttendanceService attendanceService;
 
     @Bean
@@ -29,12 +29,13 @@ public class SlackConfig {
                 .build();
     }
 
-    @Qualifier("attendance")
     @Bean
-    public App initAttendanceApp(AppConfig config) {
+    public App initSlackApp(AppConfig config) {
         App app = new App(config);
+
+        /** Slash Commands [1] : /근무시간 **/
         app.command("/근무시간", (req, ctx) -> {
-            log.info("command 명령어가 입력");
+            log.info("command[1] 명령어가 입력");
             SlashCommandPayload payload = req.getPayload();
             String userId = "<@" + payload.getUserId() + ">";
             String content = payload.getText();
@@ -52,6 +53,25 @@ public class SlackConfig {
                 log.error("근무시간 저장 중 오류 발생", e);
                 ctx.respond(r -> r.responseType("ephemeral")
                         .text(":x: 근무시간 저장 중 오류가 발생했습니다. 관리자에게 문의하세요."));
+            }
+            return ctx.ack();
+        });
+
+        /** Slash Commands [2] : /월별기록 **/
+        app.command("/월별기록", (req, ctx)-> {
+
+            log.info("command[2] 명령어가 입력");
+            SlashCommandPayload payload = req.getPayload();
+            String content = payload.getText();
+
+            try {
+                ctx.respond(r -> r.responseType("in_channel")
+                        .text(":white_check_mark: " + content + "의 기록 ... "));
+                attendanceService.getMonthlyRecord(payload.getChannelId(), content);
+            } catch (Exception e){
+                log.error("월별 근무기록 출력 중 오류 발생", e);
+                ctx.respond(r -> r.responseType("ephemeral")
+                        .text(":x: 근무기록 출력 중 오류가 발생했습니다. 관리자에게 문의하세요."));
             }
             return ctx.ack();
         });

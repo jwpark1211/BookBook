@@ -7,9 +7,7 @@ import org.springframework.boot.web.servlet.ServletComponentScan;
 @SpringBootApplication
 @ServletComponentScan
 public class WorkBotApplication {
-
 	public static void main(String[] args) {
 		SpringApplication.run(WorkBotApplication.class, args);
 	}
-
 }

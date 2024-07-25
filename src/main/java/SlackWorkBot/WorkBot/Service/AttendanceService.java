@@ -16,9 +16,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -31,7 +33,8 @@ public class AttendanceService {
     @Value("${slack.postMsgUrl}")
     private String SLACK_POST_MESSAGE_URL;
     private final AttendanceRepository attendanceRepository;
-    private static final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+    private static final DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+    private static final DateTimeFormatter monthFormatter = DateTimeFormatter.ofPattern("yyyy-MM");
 
     public boolean saveAttendanceData(String channelId, String employName, String content) {
         try {
@@ -43,11 +46,11 @@ public class AttendanceService {
             LocalDateTime checkInTime = convertToLocalDateTime(workTime[0].trim());
             LocalDateTime checkOutTime = convertToLocalDateTime(workTime[1].trim());
 
-            if(checkInTime.isAfter(checkOutTime)){
+            if (checkInTime.isAfter(checkOutTime)) {
                 log.error("checkInTime > checkOutTime");
                 sendMessageToChannel(channelId, ":x: 퇴근 시간은 반드시 출근 시간 이후 이어야 합니다.");
                 return false;
-            }else{
+            } else {
                 Attendance attendance = Attendance.builder()
                         .channelId(channelId)
                         .employName(employName)
@@ -65,13 +68,42 @@ public class AttendanceService {
             return false;
         } catch (IllegalArgumentException e) {
             log.error("잘못된 시간 형식: {}", content, e);
-            throw e;
+            sendMessageToChannel(channelId, ":x: 잘못된 시간 형식입니다.");
+            return false;
         } catch (Exception e) {
             log.error("근무 시간 저장 중 오류 발생", e);
             sendMessageToChannel(channelId, ":x: 근무시간 저장 중 오류가 발생했습니다.");
             return false;
         }
         return true;
+    }
+
+    public void getMonthlyRecord(String channelId, String content) {
+        try {
+            YearMonth recordMonth = convertToYearMonth(content);
+            List<Attendance> channelData = attendanceRepository.findByChannelId(channelId);
+            StringBuilder sendText = new StringBuilder();
+            for (Attendance data : channelData) {
+                YearMonth attendanceMonth = YearMonth.from(data.getCheckInTime());
+                if (recordMonth.equals(attendanceMonth)) {
+                    LocalDateTime cIn = data.getCheckInTime(); LocalDateTime cOut = data.getCheckOutTime();
+                    String text = data.getEmployName() + " \uD83D\uDCAD " +
+                            cIn.getDayOfMonth() + "일 " + cIn.getHour() + "시 " + cIn.getMinute() + "분" + " ~ " +
+                            cOut.getDayOfMonth() + "일 " + cOut.getHour() + "시 " + cOut.getMinute() + "분" + "\n";
+                    sendText.append(text);
+                }
+            }
+            if (sendText.length() == 0) {
+                sendText.append("해당 월에 대한 기록이 없습니다.");
+            }
+            sendMessageToChannel(channelId, sendText.toString());
+        } catch (IllegalArgumentException e) {
+            log.error("잘못된 날짜 형식: {}", content, e);
+            sendMessageToChannel(channelId, ":x: 잘못된 날짜 형식입니다.");
+        } catch (Exception e) {
+            log.error("근무 시간 출력 중 오류 발생", e);
+            sendMessageToChannel(channelId, ":x: 근무시간 출력 중 오류가 발생했습니다.");
+        }
     }
 
     public void sendMessageToChannel(String channelId, String content) {
@@ -86,10 +118,19 @@ public class AttendanceService {
 
     private LocalDateTime convertToLocalDateTime(String time) {
         try {
-            return LocalDateTime.parse(time, formatter);
+            return LocalDateTime.parse(time, dateTimeFormatter);
         } catch (DateTimeParseException e) {
             log.error("시간 변환 실패: {}", time, e);
             throw new IllegalArgumentException("잘못된 시간 형식");
+        }
+    }
+
+    private YearMonth convertToYearMonth(String date) {
+        try {
+            return YearMonth.parse(date, monthFormatter);
+        } catch (DateTimeParseException e) {
+            log.error("날짜 변환 실패: {}", date, e);
+            throw new IllegalArgumentException("잘못된 날짜 형식");
         }
     }
 
