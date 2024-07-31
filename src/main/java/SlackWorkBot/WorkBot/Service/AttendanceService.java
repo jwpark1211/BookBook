@@ -50,31 +50,33 @@ public class AttendanceService {
 
                 attendanceRepository.save(attendance);
                 slackService.sendMessageToChannel(channelId,
-                        ":white_check_mark: <@" + userId + ">님의 근무시간 : " + content);
+                        "<@"+userId+">님의 근무시간", content);
             }
 
         } catch (DataIntegrityViolationException e) {
             log.error("중복 데이터 저장 시도: {}", content, e);
-            slackService.sendEphemeralMessageToUser(channelId, userId,":x: 이미 저장된 데이터입니다.");
+            slackService.sendEphemeralMessageToUser(channelId, userId,"\uD83D\uDCA5 오류 발생",
+                    "이미 저장된 데이터입니다.");
         } catch (IllegalArgumentException e) {
             log.error("잘못된 시간 형식: {}", content, e);
-            slackService.sendEphemeralMessageToUser(channelId, userId ,":x: 잘못된 시간 형식입니다 : " + e.getMessage());
+            slackService.sendEphemeralMessageToUser(channelId, userId ,"\uD83D\uDCA5 오류 발생",
+                    "잘못된 시간 형식입니다 : " + e.getMessage());
         } catch (Exception e) {
             log.error("근무 시간 저장 중 오류 발생", e);
-            slackService.sendEphemeralMessageToUser(channelId, userId,":x: 근무시간 저장 중 오류가 발생했습니다.");
+            slackService.sendEphemeralMessageToUser(channelId, userId,"\uD83D\uDCA5 오류 발생",
+                    "근무시간 저장 중 오류가 발생했습니다.");
         }
     }
 
     public void getMonthlyRecord(String channelId, String userId, String[] contents){
         if(contents.length < 1 || contents.length > 2){
-            slackService.sendEphemeralMessageToUser(channelId,
-                    userId,":x: 잘못된 입력입니다. [ex] /월별기록 2024-05 {option : @userName}");
+            slackService.sendEphemeralMessageToUser(channelId, userId,
+                    "\uD83D\uDCA5 오류 발생", "잘못된 입력입니다. \n[ex] /월별기록 2024-05 {option : @userName}");
         }else{
             try {
                 YearMonth recordMonth = convertToYearMonth(contents[0]);
                 StringBuilder sendText = new StringBuilder();
                 List<Attendance> attendances = new ArrayList<>();
-                slackService.sendMessageToChannel(channelId,"\uD83D\uDCDD "+contents[0]+"의 기록...\n");
                 if (contents.length == 1) {
                     attendances = attendanceRepository.findByChannelId(channelId);
                 } else if (contents.length == 2) {
@@ -85,7 +87,7 @@ public class AttendanceService {
                     if (recordMonth.equals(attendanceMonth)) {
                         LocalDateTime cIn = att.getCheckInTime();
                         LocalDateTime cOut = att.getCheckOutTime();
-                        String text = "[" + att.getId() + "] " + att.getUserId() + " \uD83D\uDCAD " +
+                        String text = "[" + att.getId() + "] " + att.getUserId() +
                                 cIn.getDayOfMonth() + "일 " + cIn.getHour() + "시 " + cIn.getMinute() + "분" + " ~ " +
                                 cOut.getDayOfMonth() + "일 " + cOut.getHour() + "시 " + cOut.getMinute() + "분" + "\n";
                         sendText.append(text);
@@ -95,13 +97,13 @@ public class AttendanceService {
                     log.info("attendances.size={}",attendances.size());
                     sendText.append("해당 월에 대한 기록이 없습니다.");
                 }
-                slackService.sendMessageToChannel(channelId, sendText.toString());
+                slackService.sendMessageToChannel(channelId,"\uD83D\uDCDD "+contents[0]+"의 기록..." ,sendText.toString());
             } catch (IllegalArgumentException e) {
                 log.error("잘못된 날짜 형식: {}", contents[0], e);
-                slackService.sendMessageToChannel(channelId, ":x: 잘못된 날짜 형식입니다.");
+                slackService.sendEphemeralMessageToUser(channelId,userId,"\uD83D\uDCA5 오류 발생", "잘못된 날짜 형식입니다.");
             } catch (Exception e) {
                 log.error("근무 시간 출력 중 오류 발생", e);
-                slackService.sendMessageToChannel(channelId, ":x: 근무시간 출력 중 오류가 발생했습니다.");
+                slackService.sendEphemeralMessageToUser(channelId,userId, "\uD83D\uDCA5 오류 발생","근무시간 출력 중 오류가 발생했습니다.");
             }
         }
     }

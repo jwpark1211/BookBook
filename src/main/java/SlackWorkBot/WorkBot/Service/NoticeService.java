@@ -29,11 +29,11 @@ public class NoticeService {
                         .content(content)
                         .build();
                 noticeRepository.save(notice);
-                slackService.sendMessageToChannel(channelId,":white_check_mark: 공지사항 등록이 완료되었습니다.");
+                slackService.sendMessageToChannel(channelId,"\uD83D\uDC8C 공지사항 등록 완료",content);
             }
         }catch(Exception e){
             log.error("공지사항 저장 중 오류 발생", e);
-            slackService.sendEphemeralMessageToUser(channelId,userId,
+            slackService.sendEphemeralMessageToUser(channelId,userId,"\uD83D\uDCA5 오류 발생",
                     ":x: 공지사항 등록 중 오류가 발생했습니다. 관리자에게 문의하세요.");
         }
     }
@@ -43,7 +43,6 @@ public class NoticeService {
             List<Notice> monthlyNotice = noticeRepository.findByChannelId(channelId);
             YearMonth yearMonthNow = YearMonth.now();
             StringBuilder sendText = new StringBuilder();
-            slackService.sendMessageToChannel(channelId,":white_check_mark: 이달의 공지사항..." );
             for(Notice notice : monthlyNotice){
                 LocalDateTime noTime = notice.getCreatedAt();
                 if(noTime.getYear() == yearMonthNow.getYear() &&
@@ -54,11 +53,11 @@ public class NoticeService {
                 }
             }
             if(sendText.length() == 0) sendText.append("해당 달의 공지사항이 없습니다.");
-            slackService.sendMessageToChannel(channelId,sendText.toString());
+            slackService.sendMessageToChannel(channelId,"\uD83D\uDC8C 이달의 공지사항",sendText.toString());
         }catch(Exception e){
             log.error("이번달 공지사항 출력 처리 도중 에러 발생", e);
-            slackService.sendEphemeralMessageToUser(channelId, userId,
-                    ":x: 공지사항 출력 중 오류가 발생했습니다. 관리자에게 문의하세요.");
+            slackService.sendEphemeralMessageToUser(channelId, userId,"\uD83D\uDCA5 오류 발생",
+                    "공지사항 출력 중 오류가 발생했습니다. 관리자에게 문의하세요.");
         }
     }
 
