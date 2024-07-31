@@ -1,6 +1,7 @@
 package SlackWorkBot.WorkBot.Config;
 
 import SlackWorkBot.WorkBot.Service.AttendanceService;
+import SlackWorkBot.WorkBot.Service.NoticeService;
 import com.slack.api.app_backend.slash_commands.payload.SlashCommandPayload;
 import com.slack.api.bolt.App;
 import com.slack.api.bolt.AppConfig;
@@ -20,6 +21,7 @@ public class SlackConfig {
     private String signingSecret;
 
     private final AttendanceService attendanceService;
+    private final NoticeService noticeService;
 
     @Bean
     public AppConfig loadSingleWorkspaceAppConfig() {
@@ -36,24 +38,13 @@ public class SlackConfig {
         /** Slash Commands [1] : /근무시간 **/
         app.command("/근무시간", (req, ctx) -> {
             log.info("command[1] 명령어가 입력");
+
             SlashCommandPayload payload = req.getPayload();
-            String userId = "<@" + payload.getUserId() + ">";
+            String userId = payload.getUserId();
+            String userName = payload.getUserName();
             String content = payload.getText();
 
-            try {
-                boolean flag = attendanceService.saveAttendanceData(payload.getChannelId(), userId, content);
-                log.info("attendanceData가 저장되었습니다.");
-                if(flag) { ctx.respond(r -> r.responseType("in_channel")
-                        .text(":white_check_mark: " + userId + "님의 근무시간 : " + content)); }
-            } catch (IllegalArgumentException e) {
-                log.error("잘못된 시간 형식: {}", content);
-                ctx.respond(r -> r.responseType("ephemeral")
-                        .text(":x: 잘못된 시간 형식입니다. 올바른 형식: yyyy-MM-dd HH:mm~yyyy-MM-dd HH:mm"));
-            } catch (Exception e) {
-                log.error("근무시간 저장 중 오류 발생", e);
-                ctx.respond(r -> r.responseType("ephemeral")
-                        .text(":x: 근무시간 저장 중 오류가 발생했습니다. 관리자에게 문의하세요."));
-            }
+            attendanceService.saveAttendanceData(payload.getChannelId(), userName, userId, content);
             return ctx.ack();
         });
 
@@ -63,20 +54,38 @@ public class SlackConfig {
             log.info("command[2] 명령어가 입력");
             SlashCommandPayload payload = req.getPayload();
             String content = payload.getText();
+            String userId = payload.getUserId();
+            String [] contents = content.split(" ");
 
-            try {
-                ctx.respond(r -> r.responseType("in_channel")
-                        .text(":white_check_mark: " + content + "의 기록 ... "));
-                attendanceService.getMonthlyRecord(payload.getChannelId(), content);
-            } catch (Exception e){
-                log.error("월별 근무기록 출력 중 오류 발생", e);
-                ctx.respond(r -> r.responseType("ephemeral")
-                        .text(":x: 근무기록 출력 중 오류가 발생했습니다. 관리자에게 문의하세요."));
-            }
+            attendanceService.getMonthlyRecord(payload.getChannelId() , userId , contents);
+
             return ctx.ack();
+        });
+
+        /** Slash Commands [3] : /공지등록 **/
+        app.command("/공지등록", (req,ctx)-> {
+            log.info("command[3] 명령어가 입력");
+            SlashCommandPayload payload = req.getPayload();
+            String content = payload.getText();
+            String userId = payload.getUserId();
+            String channelId = payload.getChannelId();
+
+            noticeService.saveNoticeData(channelId, userId, content);
+            return ctx.ack();
+        });
+
+        /** Slash Commands [4] : /이달의공지 **/
+        app.command("/이달의공지", (req,ctx) -> {
+           log.info("command[4] 명령어가 입력");
+           SlashCommandPayload payload = req.getPayload();
+           String channelId = payload.getChannelId();
+           String userId = payload.getUserId();
+
+           noticeService.getMonthlyNoticeByChannelId(channelId,userId);
+
+           return ctx.ack();
         });
 
         return app;
     }
-
 }
