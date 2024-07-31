@@ -9,4 +9,5 @@ import java.util.List;
 @Repository
 public interface AttendanceRepository extends JpaRepository<Attendance, Long> {
     List<Attendance> findByChannelId(String channelId);
+    List<Attendance> findByChannelIdAndUserName(String channelId, String userName);
 }

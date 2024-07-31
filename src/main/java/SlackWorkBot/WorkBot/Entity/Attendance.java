@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
 @Entity @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Table(uniqueConstraints = {
-        @UniqueConstraint(columnNames = {"channelId", "employName", "checkInTime", "checkOutTime"})})
+        @UniqueConstraint(columnNames = {"channelId", "userName", "checkInTime", "checkOutTime"})})
 public class Attendance {
 
     @Id
@@ -22,7 +22,8 @@ public class Attendance {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     private String channelId;
-    private String employName;
+    private String userName;
+    private String userId;
     private LocalDateTime checkInTime;
     private LocalDateTime checkOutTime;
 
@@ -33,10 +34,11 @@ public class Attendance {
     private LocalDateTime modifiedAt = LocalDateTime.now();
 
     @Builder
-    public Attendance(String channelId, String employName, LocalDateTime checkInTime,
+    public Attendance(String channelId, String userName, String userId, LocalDateTime checkInTime,
                       LocalDateTime checkOutTime, LocalDateTime createdAt){
         this.channelId = channelId;
-        this.employName = employName;
+        this.userName = userName;
+        this.userId = userId;
         this.checkInTime = checkInTime;
         this.checkOutTime = checkOutTime;
     }

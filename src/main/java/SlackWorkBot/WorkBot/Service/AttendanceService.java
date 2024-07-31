@@ -2,45 +2,34 @@ package SlackWorkBot.WorkBot.Service;
 
 import SlackWorkBot.WorkBot.Entity.Attendance;
 import SlackWorkBot.WorkBot.Repository.AttendanceRepository;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
+
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class AttendanceService {
-    @Value("${slack.token}")
-    private String slackToken;
-    private final RestTemplate restTemplate;
-    @Value("${slack.postMsgUrl}")
-    private String SLACK_POST_MESSAGE_URL;
+
     private final AttendanceRepository attendanceRepository;
+    private final SlackService slackService;
     private static final DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
     private static final DateTimeFormatter monthFormatter = DateTimeFormatter.ofPattern("yyyy-MM");
 
-    public boolean saveAttendanceData(String channelId, String employName, String content) {
+    public void saveAttendanceData(String channelId, String userName, String userId, String content) {
         try {
             String[] workTime = content.split("~");
             if (workTime.length != 2) {
-                throw new IllegalArgumentException("잘못된 시간 형식");
+                throw new IllegalArgumentException("근무시간 형식이 잘못되었습니다.");
             }
 
             LocalDateTime checkInTime = convertToLocalDateTime(workTime[0].trim());
@@ -48,71 +37,72 @@ public class AttendanceService {
 
             if (checkInTime.isAfter(checkOutTime)) {
                 log.error("checkInTime > checkOutTime");
-                sendMessageToChannel(channelId, ":x: 퇴근 시간은 반드시 출근 시간 이후 이어야 합니다.");
-                return false;
+                throw new IllegalArgumentException("퇴근 시간은 출근 시간 이후이어야 합니다.");
             } else {
                 Attendance attendance = Attendance.builder()
                         .channelId(channelId)
-                        .employName(employName)
+                        .userName("@"+userName)
+                        .userId("<@"+userId+">")
                         .checkInTime(checkInTime)
                         .checkOutTime(checkOutTime)
                         .createdAt(LocalDateTime.now())
                         .build();
 
                 attendanceRepository.save(attendance);
+                slackService.sendMessageToChannel(channelId,
+                        ":white_check_mark: <@" + userId + ">님의 근무시간 : " + content);
             }
 
         } catch (DataIntegrityViolationException e) {
             log.error("중복 데이터 저장 시도: {}", content, e);
-            sendMessageToChannel(channelId, ":x: 이미 저장된 데이터입니다.");
-            return false;
+            slackService.sendEphemeralMessageToUser(channelId, userId,":x: 이미 저장된 데이터입니다.");
         } catch (IllegalArgumentException e) {
             log.error("잘못된 시간 형식: {}", content, e);
-            sendMessageToChannel(channelId, ":x: 잘못된 시간 형식입니다.");
-            return false;
+            slackService.sendEphemeralMessageToUser(channelId, userId ,":x: 잘못된 시간 형식입니다 : " + e.getMessage());
         } catch (Exception e) {
             log.error("근무 시간 저장 중 오류 발생", e);
-            sendMessageToChannel(channelId, ":x: 근무시간 저장 중 오류가 발생했습니다.");
-            return false;
+            slackService.sendEphemeralMessageToUser(channelId, userId,":x: 근무시간 저장 중 오류가 발생했습니다.");
         }
-        return true;
     }
 
-    public void getMonthlyRecord(String channelId, String content) {
-        try {
-            YearMonth recordMonth = convertToYearMonth(content);
-            List<Attendance> channelData = attendanceRepository.findByChannelId(channelId);
-            StringBuilder sendText = new StringBuilder();
-            for (Attendance data : channelData) {
-                YearMonth attendanceMonth = YearMonth.from(data.getCheckInTime());
-                if (recordMonth.equals(attendanceMonth)) {
-                    LocalDateTime cIn = data.getCheckInTime(); LocalDateTime cOut = data.getCheckOutTime();
-                    String text = data.getEmployName() + " \uD83D\uDCAD " +
-                            cIn.getDayOfMonth() + "일 " + cIn.getHour() + "시 " + cIn.getMinute() + "분" + " ~ " +
-                            cOut.getDayOfMonth() + "일 " + cOut.getHour() + "시 " + cOut.getMinute() + "분" + "\n";
-                    sendText.append(text);
+    public void getMonthlyRecord(String channelId, String userId, String[] contents){
+        if(contents.length < 1 || contents.length > 2){
+            slackService.sendEphemeralMessageToUser(channelId,
+                    userId,":x: 잘못된 입력입니다. [ex] /월별기록 2024-05 {option : @userName}");
+        }else{
+            try {
+                YearMonth recordMonth = convertToYearMonth(contents[0]);
+                StringBuilder sendText = new StringBuilder();
+                List<Attendance> attendances = new ArrayList<>();
+                slackService.sendMessageToChannel(channelId,"\uD83D\uDCDD "+contents[0]+"의 기록...\n");
+                if (contents.length == 1) {
+                    attendances = attendanceRepository.findByChannelId(channelId);
+                } else if (contents.length == 2) {
+                    attendances = attendanceRepository.findByChannelIdAndUserName(channelId, contents[1]);
                 }
+                for (Attendance att : attendances) {
+                    YearMonth attendanceMonth = YearMonth.from(att.getCheckInTime());
+                    if (recordMonth.equals(attendanceMonth)) {
+                        LocalDateTime cIn = att.getCheckInTime();
+                        LocalDateTime cOut = att.getCheckOutTime();
+                        String text = "[" + att.getId() + "] " + att.getUserId() + " \uD83D\uDCAD " +
+                                cIn.getDayOfMonth() + "일 " + cIn.getHour() + "시 " + cIn.getMinute() + "분" + " ~ " +
+                                cOut.getDayOfMonth() + "일 " + cOut.getHour() + "시 " + cOut.getMinute() + "분" + "\n";
+                        sendText.append(text);
+                    }
+                }
+                if (sendText.length() == 0) {
+                    log.info("attendances.size={}",attendances.size());
+                    sendText.append("해당 월에 대한 기록이 없습니다.");
+                }
+                slackService.sendMessageToChannel(channelId, sendText.toString());
+            } catch (IllegalArgumentException e) {
+                log.error("잘못된 날짜 형식: {}", contents[0], e);
+                slackService.sendMessageToChannel(channelId, ":x: 잘못된 날짜 형식입니다.");
+            } catch (Exception e) {
+                log.error("근무 시간 출력 중 오류 발생", e);
+                slackService.sendMessageToChannel(channelId, ":x: 근무시간 출력 중 오류가 발생했습니다.");
             }
-            if (sendText.length() == 0) {
-                sendText.append("해당 월에 대한 기록이 없습니다.");
-            }
-            sendMessageToChannel(channelId, sendText.toString());
-        } catch (IllegalArgumentException e) {
-            log.error("잘못된 날짜 형식: {}", content, e);
-            sendMessageToChannel(channelId, ":x: 잘못된 날짜 형식입니다.");
-        } catch (Exception e) {
-            log.error("근무 시간 출력 중 오류 발생", e);
-            sendMessageToChannel(channelId, ":x: 근무시간 출력 중 오류가 발생했습니다.");
-        }
-    }
-
-    public void sendMessageToChannel(String channelId, String content) {
-        HttpHeaders headers = getSlackHeaders(slackToken);
-        try {
-            String body = getJsonBody(channelId, content);
-            restTemplate.exchange(SLACK_POST_MESSAGE_URL, HttpMethod.POST, new HttpEntity<>(body, headers), String.class);
-        } catch (Exception e) {
-            log.error("메시지 전송 실패: {}", content, e);
         }
     }
 
@@ -134,18 +124,5 @@ public class AttendanceService {
         }
     }
 
-    private HttpHeaders getSlackHeaders(String slackToken) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.add(HttpHeaders.AUTHORIZATION, "Bearer " + slackToken);
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        return headers;
-    }
 
-    private String getJsonBody(String channelId, String text) throws JsonProcessingException {
-        Map<String, String> jsonObject = new HashMap<>();
-        jsonObject.put("channel", channelId);
-        jsonObject.put("text", text);
-        ObjectMapper objectMapper = new ObjectMapper();
-        return objectMapper.writeValueAsString(jsonObject);
-    }
 }
