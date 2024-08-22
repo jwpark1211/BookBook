@@ -1,5 +1,7 @@
 package SlackWorkBot.WorkBot.Service;
 
+import SlackWorkBot.WorkBot.DTO.ErrorNotiResponse;
+import SlackWorkBot.WorkBot.DTO.ListResponse;
 import SlackWorkBot.WorkBot.Entity.Notice;
 import SlackWorkBot.WorkBot.Repository.NoticeRepository;
 import lombok.RequiredArgsConstructor;
@@ -29,12 +31,16 @@ public class NoticeService {
                         .content(content)
                         .build();
                 noticeRepository.save(notice);
-                slackService.sendMessageToChannel(channelId,"\uD83D\uDC8C 공지사항 등록 완료",content);
+                ListResponse response = new ListResponse(channelId,
+                        "공지사항 등록 완료",content,"#77E4C8");
+                slackService.sendMessageToChannelUseBaseResponse(response);
             }
         }catch(Exception e){
             log.error("공지사항 저장 중 오류 발생", e);
-            slackService.sendEphemeralMessageToUser(channelId,userId,"\uD83D\uDCA5 오류 발생",
-                    ":x: 공지사항 등록 중 오류가 발생했습니다. 관리자에게 문의하세요.");
+            ErrorNotiResponse response =
+                    new ErrorNotiResponse(channelId, userId, "공지사항 등록 중 오류 발생",
+                            "공지사항 등록 중 오류가 발생했습니다. 관리자에게 문의하세요.");
+            slackService.sendMessageToChannelUseBaseResponse(response);
         }
     }
 
@@ -53,11 +59,15 @@ public class NoticeService {
                 }
             }
             if(sendText.length() == 0) sendText.append("해당 달의 공지사항이 없습니다.");
-            slackService.sendMessageToChannel(channelId,"\uD83D\uDC8C 이달의 공지사항",sendText.toString());
+            ListResponse response = new ListResponse(channelId,
+                    "\uD83D\uDC8C " + yearMonthNow.getMonthValue() + "월의 공지사항", sendText.toString(),"#77E4C8");
+            slackService.sendMessageToChannelUseBaseResponse(response);
         }catch(Exception e){
             log.error("이번달 공지사항 출력 처리 도중 에러 발생", e);
-            slackService.sendEphemeralMessageToUser(channelId, userId,"\uD83D\uDCA5 오류 발생",
-                    "공지사항 출력 중 오류가 발생했습니다. 관리자에게 문의하세요.");
+            ErrorNotiResponse response =
+                    new ErrorNotiResponse(channelId, userId, "공지사항 출력 중 오류 발생",
+                            "공지사항 출력 중 오류가 발생했습니다. 관리자에게 문의하세요.");
+            slackService.sendMessageToChannelUseBaseResponse(response);
         }
     }
 
