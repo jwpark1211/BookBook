@@ -30,43 +30,38 @@ public class AttendanceService {
     private static final DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
     private static final DateTimeFormatter monthFormatter = DateTimeFormatter.ofPattern("yyyy-MM");
 
-    public void saveAttendanceData(String channelId, String userName, String userId, String content) {
+    public void saveAttendanceData(String channelId, String userName, String userId, String checkInDate,
+                                   String checkInTime, String checkOutDate, String checkOutTime) {
         try {
-            String[] workTime = content.split("~");
-            if (workTime.length != 2) {
-                throw new IllegalArgumentException("근무시간 형식이 잘못되었습니다.");
-            }
+            LocalDateTime checkInDateTime = convertToLocalDateTime(checkInDate + " " + checkInTime);
+            LocalDateTime checkOutDateTime = convertToLocalDateTime(checkOutDate + " " + checkOutTime);
 
-            LocalDateTime checkInTime = convertToLocalDateTime(workTime[0].trim());
-            LocalDateTime checkOutTime = convertToLocalDateTime(workTime[1].trim());
-
-            if (checkInTime.isAfter(checkOutTime)) {
-                log.error("checkInTime > checkOutTime");
+            if (checkInDateTime.isAfter(checkOutDateTime)) {
                 throw new IllegalArgumentException("퇴근 시간은 출근 시간 이후이어야 합니다.");
-            } else {
-                Attendance attendance = Attendance.builder()
-                        .channelId(channelId)
-                        .userName("@"+userName)
-                        .userId("<@"+userId+">")
-                        .checkInTime(checkInTime)
-                        .checkOutTime(checkOutTime)
-                        .createdAt(LocalDateTime.now())
-                        .build();
-
-                attendanceRepository.save(attendance);
-                ListResponse response = new ListResponse(channelId,
-                        "저장된 근무 시간",content,"#77E4C8");
-                slackService.sendMessageToChannelUseBaseResponse(response);
             }
+
+            Attendance attendance = Attendance.builder()
+                    .channelId(channelId)
+                    .userName("@" + userName)
+                    .userId("<@" + userId + ">")
+                    .checkInTime(checkInDateTime)
+                    .checkOutTime(checkOutDateTime)
+                    .createdAt(LocalDateTime.now())
+                    .build();
+
+            attendanceRepository.save(attendance);
+            ListResponse response = new ListResponse(channelId,
+                    "!NEW! 근무시간 저장 완료","[출근] "+checkInDateTime+"\n"+"[퇴근] "+checkOutDateTime,"#77E4C8");
+            slackService.sendMessageToChannelUseBaseResponse(response);
 
         } catch (DataIntegrityViolationException e) {
-            log.error("중복 데이터 저장 시도: {}", content, e);
+            log.error("중복 데이터 저장 시도: {}", e);
             ErrorNotiResponse response =
                     new ErrorNotiResponse(channelId, userId, "데이터 저장 중 오류 발생",
                             "이미 저장된 데이터입니다. 중복 저장은 불가합니다.");
             slackService.sendMessageToChannelUseBaseResponse(response);
         } catch (IllegalArgumentException e) {
-            log.error("잘못된 시간 형식: {}", content, e);
+            log.error("잘못된 시간 형식: {}", e);
             ErrorNotiResponse response =
                     new ErrorNotiResponse(channelId, userId, "시간 형식 오류 발생",
                             "잘못된 시간 형식입니다.\n"+e.getMessage());
@@ -149,6 +144,7 @@ public class AttendanceService {
             }
         }
     }
+
 
     //*** PRIVATE METHOD ***//
     private LocalDateTime convertToLocalDateTime(String time) {

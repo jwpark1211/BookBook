@@ -2,6 +2,7 @@ package SlackWorkBot.WorkBot.Service;
 
 import SlackWorkBot.WorkBot.DTO.ErrorNotiResponse;
 import SlackWorkBot.WorkBot.DTO.ListResponse;
+import SlackWorkBot.WorkBot.DTO.ScreamResponse;
 import SlackWorkBot.WorkBot.Entity.Notice;
 import SlackWorkBot.WorkBot.Repository.NoticeRepository;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +33,7 @@ public class NoticeService {
                         .build();
                 noticeRepository.save(notice);
                 ListResponse response = new ListResponse(channelId,
-                        "공지사항 등록 완료",content,"#77E4C8");
+                        "!NEW! 공지사항", content,"#77E4C8");
                 slackService.sendMessageToChannelUseBaseResponse(response);
             }
         }catch(Exception e){
@@ -71,4 +72,15 @@ public class NoticeService {
         }
     }
 
+    public void screamNotice(String channelId, String userId, String screamContent) {
+        if(screamContent.length()<1){
+            ErrorNotiResponse response =
+                    new ErrorNotiResponse(channelId,userId,"외치기 중 오류 발생",
+                            "외칠 문장이 없습니다.");
+            slackService.sendMessageToChannelUseBaseResponse(response);
+        }else{
+            ScreamResponse screamResponse = new ScreamResponse(channelId,screamContent);
+            slackService.sendMessageToChannelUseBaseResponse(screamResponse);
+        }
+    }
 }
