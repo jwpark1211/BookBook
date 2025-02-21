@@ -1,8 +1,8 @@
 package SlackWorkBot.WorkBot.Config;
 
-import SlackWorkBot.WorkBot.Service.AttendanceService;
-import SlackWorkBot.WorkBot.Service.NoticeService;
-import SlackWorkBot.WorkBot.Service.SlackMessageBuilder;
+import SlackWorkBot.WorkBot.DTO.AladinBestSellerListResponse;
+import SlackWorkBot.WorkBot.DTO.AladinBookSearchListResponse;
+import SlackWorkBot.WorkBot.Service.*;
 import com.slack.api.app_backend.slash_commands.payload.SlashCommandPayload;
 import com.slack.api.bolt.App;
 import com.slack.api.bolt.AppConfig;
@@ -24,9 +24,8 @@ public class SlackConfig {
     @Value("${slack.signingSecret}")
     private String signingSecret;
 
-    private final AttendanceService attendanceService;
-    private final NoticeService noticeService;
-    private final SlackMessageBuilder slackMessageBuilder;
+    private final BookService bookService;
+    private final BookMessageBuilder bookMessageBuilder;
 
     @Bean
     public AppConfig loadSingleWorkspaceAppConfig() {
@@ -40,135 +39,143 @@ public class SlackConfig {
     public App initSlackApp(AppConfig config) {
         App app = new App(config);
 
-        /** Slash Commands [1] : /근무시간 **/
-        app.command("/근무시간", (req, ctx) -> {
-            // Slack Block Kit 메시지 전송
-            List<LayoutBlock> layoutBlocks = slackMessageBuilder.createAttendanceLayoutBlocks();
-            ctx.respond(r -> r.blocks(layoutBlocks));
+        /** ===========================
+         *  도서 관련 Slash Commands
+         *  =========================== */
+
+        // 1) /isbn 예: /isbn 9781234567890
+        app.command("/isbn검색", (req, ctx) -> {
+            String isbn = req.getPayload().getText(); // 사용자가 입력한 ISBN
+            if (isbn == null || isbn.isEmpty()) {
+                ctx.respond("검색할 ISBN을 입력해주세요. 예) `/isbn 9781234567890`");
+                return ctx.ack();
+            }
+
+            // BookService로 검색 (Mono -> block())
+            AladinBookSearchListResponse result = bookService.searchByBookISBN(isbn).block();
+            if (result == null) {
+                ctx.respond("알라딘 API 응답이 없거나 에러가 발생했습니다.");
+                return ctx.ack();
+            }
+
+            // BookMessageBuilder로 Block Kit 구성 (5권까지)
+            List<LayoutBlock> blocks = bookMessageBuilder.createBookSearchResultBlocks(result, isbn);
+
+            // Block Kit으로 응답
+            ctx.respond(r -> r
+                    .responseType("ephemeral") // 또는 "in_channel"
+                    .blocks(blocks)
+            );
             return ctx.ack();
         });
 
-        app.blockAction("check_in_datepicker", (req, ctx) -> {
-            String selectedDate = req.getPayload().getActions().get(0).getSelectedDate();
-            return ctx.ack();
-        });
-        app.blockAction("check_in_timepicker",(req,ctx)->{
-            String selectedTime = req.getPayload().getActions().get(0).getSelectedTime();
-            return ctx.ack();
-        });
-        app.blockAction("check_out_datepicker", (req, ctx) -> {
-            String selectedDate = req.getPayload().getActions().get(0).getSelectedDate();
-            return ctx.ack();
-        });
-        app.blockAction("check_out_timepicker",(req,ctx)->{
-            String selectedTime = req.getPayload().getActions().get(0).getSelectedTime();
-            return ctx.ack();
-        });
+        // 2) /keyword 예: /keyword 자바
+        app.command("/키워드검색", (req, ctx) -> {
+            String keyword = req.getPayload().getText();
+            if (keyword == null || keyword.isEmpty()) {
+                ctx.respond("검색할 키워드를 입력해주세요. 예) `/keyword 자바`");
+                return ctx.ack();
+            }
 
+            AladinBookSearchListResponse result = bookService.searchByKeyword(keyword).block();
+            if (result == null) {
+                ctx.respond("알라딘 API 응답이 없거나 에러가 발생했습니다.");
+                return ctx.ack();
+            }
 
-        /** Block Actions : 근무시간 저장 **/
-        app.blockAction("action_save_attendance", (req, ctx) -> {
-            // 사용자가 입력한 데이터 가져오기
-            String channelId = req.getPayload().getChannel().getId();
-            String userId = req.getPayload().getUser().getId();
-            String userName = req.getPayload().getUser().getName();
-
-            // 출근 날짜와 시간 가져오기
-            String checkInDate = req.getPayload().getState().getValues().get("check_in_date").get("check_in_datepicker").getSelectedDate();
-            String checkInTime = req.getPayload().getState().getValues().get("check_in_time").get("check_in_timepicker").getSelectedTime();
-
-            // 퇴근 날짜와 시간 가져오기
-            String checkOutDate = req.getPayload().getState().getValues().get("check_out_date").get("check_out_datepicker").getSelectedDate();
-            String checkOutTime = req.getPayload().getState().getValues().get("check_out_time").get("check_out_timepicker").getSelectedTime();
-
-            // AttendanceService의 handleAttendanceSave 메서드 호출 (근무시간 저장 처리)
-            attendanceService.saveAttendanceData(channelId, userName, userId, checkInDate, checkInTime, checkOutDate, checkOutTime);
-
+            List<LayoutBlock> blocks = bookMessageBuilder.createBookSearchResultBlocks(result, keyword);
+            ctx.respond(r -> r
+                    .responseType("ephemeral")
+                    .blocks(blocks)
+            );
             return ctx.ack();
         });
 
-        //***************************************************************************************************************//
+        // 3) /bestseller
+        app.command("/베스트셀러", (req, ctx) -> {
+            // 베스트셀러 10권
+            AladinBestSellerListResponse responseData = bookService.getBestSeller().block();
+            if (responseData == null) {
+                ctx.respond("베스트셀러 목록을 가져오지 못했습니다.");
+                return ctx.ack();
+            }
 
-        /** Slash Commands [2] : /월별기록 **/
-        app.command("/월별기록", (req, ctx)-> {
-
-            log.info("command[2] 명령어가 입력");
-            SlashCommandPayload payload = req.getPayload();
-            String content = payload.getText();
-            String userId = payload.getUserId();
-            String [] contents = content.split(" ");
-
-            attendanceService.getMonthlyRecord(payload.getChannelId() , userId , contents);
-
+            List<LayoutBlock> blocks = bookMessageBuilder.createBestSellerBlocks(responseData, "베스트셀러 TOP 10");
+            ctx.respond(r -> r
+                    .responseType("ephemeral")
+                    .blocks(blocks)
+            );
             return ctx.ack();
         });
 
-        //***************************************************************************************************************//
+        // 4) /newBook
+        app.command("/신간", (req, ctx) -> {
+            // 베스트셀러 10권
+            AladinBestSellerListResponse responseData = bookService.getBestSellerNewBook().block();
+            if (responseData == null) {
+                ctx.respond("신간 목록을 가져오지 못했습니다.");
+                return ctx.ack();
+            }
 
-        /** Slash Commands [3] : /공지등록 **/
-        app.command("/공지등록", (req,ctx)-> {
-            List<LayoutBlock> layoutBlocks = slackMessageBuilder.createNoticeLayoutBlocks();
-            ctx.respond(r -> r.blocks(layoutBlocks));
+            List<LayoutBlock> blocks = bookMessageBuilder.createBestSellerBlocks(responseData, "신간 TOP 10");
+            ctx.respond(r -> r
+                    .responseType("ephemeral")
+                    .blocks(blocks)
+            );
             return ctx.ack();
         });
 
-        app.blockAction("notice_input_block",(req,ctx)->{
+        //5) /문학베스트셀러
+        app.command("/문학베스트셀러", (req, ctx) -> {
+            // 베스트셀러 10권
+            AladinBestSellerListResponse responseData = bookService.getBestSellerByGenre(1).block();
+            if (responseData == null) {
+                ctx.respond("문학 베스트셀러 목록을 가져오지 못했습니다.");
+                return ctx.ack();
+            }
+
+            List<LayoutBlock> blocks = bookMessageBuilder.createBestSellerBlocks(responseData, "문학 베스트셀러 TOP 10");
+            ctx.respond(r -> r
+                    .responseType("ephemeral")
+                    .blocks(blocks)
+            );
             return ctx.ack();
         });
 
-        app.blockAction("action_save_notice", (req, ctx) -> {
-            String channelId = req.getPayload().getChannel().getId();
-            String userId = req.getPayload().getUser().getId();
-            String noticeContent = req.getPayload().getState().getValues().get("notice_input_block").get("notice_input").getValue();
+        //5) /과학베스트셀러
+        app.command("/과학베스트셀러", (req, ctx) -> {
+            // 베스트셀러 10권
+            AladinBestSellerListResponse responseData = bookService.getBestSellerByGenre(987).block();
+            if (responseData == null) {
+                ctx.respond("과학 베스트셀러 목록을 가져오지 못했습니다.");
+                return ctx.ack();
+            }
 
-            noticeService.saveNoticeData(channelId,userId,noticeContent);
+            List<LayoutBlock> blocks = bookMessageBuilder.createBestSellerBlocks(responseData, "과학 베스트셀러 TOP 10");
+            ctx.respond(r -> r
+                    .responseType("ephemeral")
+                    .blocks(blocks)
+            );
             return ctx.ack();
         });
 
-        //***************************************************************************************************************//
+        //5) /경제베스트셀러
+        app.command("/경제베스트셀러", (req, ctx) -> {
+            // 베스트셀러 10권
+            AladinBestSellerListResponse responseData = bookService.getBestSellerByGenre(170).block();
+            if (responseData == null) {
+                ctx.respond("경제 베스트셀러 목록을 가져오지 못했습니다.");
+                return ctx.ack();
+            }
 
-        /** Slash Commands [4] : /이달의공지 **/
-        app.command("/이달의공지", (req,ctx) -> {
-           log.info("command[4] 명령어가 입력");
-           SlashCommandPayload payload = req.getPayload();
-           String channelId = payload.getChannelId();
-           String userId = payload.getUserId();
-
-           noticeService.getMonthlyNoticeByChannelId(channelId,userId);
-
-           return ctx.ack();
-        });
-
-        //***************************************************************************************************************//
-
-        /** Slash Commands [5] : /외치기 **/
-        app.command("/외치기", (req,ctx)-> {
-            List<LayoutBlock> layoutBlocks = slackMessageBuilder.createScreamLayoutBlocks();
-            ctx.respond(r -> r.blocks(layoutBlocks));
+            List<LayoutBlock> blocks = bookMessageBuilder.createBestSellerBlocks(responseData, "경제 베스트셀러 TOP 10");
+            ctx.respond(r -> r
+                    .responseType("ephemeral")
+                    .blocks(blocks)
+            );
             return ctx.ack();
         });
 
-        app.blockAction("scream_input_block",(req,ctx)->{
-            return ctx.ack();
-        });
-
-        app.blockAction("scream_action", (req, ctx) -> {
-            String channelId = req.getPayload().getChannel().getId();
-            String userId = req.getPayload().getUser().getId();
-            String screamContent = req.getPayload().getState().getValues().get("scream_input_block").get("scream_input").getValue();
-
-            noticeService.screamNotice(channelId, userId,screamContent);
-            return ctx.ack();
-        });
-
-        //***************************************************************************************************************//
-
-        /** Slash Commands [6] : /월급계산기 **/
-        app.command("/월급계산기", (req, ctx)->{
-            List<LayoutBlock> layoutBlocks = slackMessageBuilder.createScreamLayoutBlocks();
-            ctx.respond(r-> r.blocks(layoutBlocks));
-            return ctx.ack();
-        });
 
         return app;
     }

@@ -9,7 +9,7 @@ version = '0.0.1-SNAPSHOT'
 
 java {
 	toolchain {
-		languageVersion = JavaLanguageVersion.of(17)
+		languageVersion = JavaLanguageVersion.of(21)
 	}
 }
 
@@ -30,6 +30,7 @@ dependencies {
 	implementation 'com.slack.api:bolt:1.28.0'
 	implementation 'com.slack.api:bolt-jakarta-servlet:1.28.0'
 	implementation 'com.slack.api:bolt-jakarta-jetty:1.28.0'
+	implementation 'org.springframework.boot:spring-boot-starter-webflux' //webClient
 
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
